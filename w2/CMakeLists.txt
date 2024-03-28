@@ -11,7 +11,9 @@ SET(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(W2_CLIENT_SOURCES
     client.cpp
     )
-
+set(W2_SERVER_SOURCES
+    server.cpp
+    )
 set(W2_LOBBY_SOURCES
     lobby.cpp
     )
@@ -28,12 +30,17 @@ add_executable(w2_client ${W2_CLIENT_SOURCES})
 target_link_libraries(w2_client PUBLIC project_options project_warnings)
 target_link_libraries(w2_client PUBLIC raylib enet)
 
+add_executable(w2_server ${W2_SERVER_SOURCES})
+target_link_libraries(w2_server PUBLIC project_options project_warnings)
+target_link_libraries(w2_server PUBLIC raylib enet)
+
 add_executable(w2_lobby ${W2_LOBBY_SOURCES})
 target_link_libraries(w2_lobby PUBLIC project_options project_warnings)
 target_link_libraries(w2_lobby PUBLIC enet)
 
 if(MSVC)
   target_link_libraries(w2_client PUBLIC ws2_32.lib winmm.lib)
+  target_link_libraries(w2_server PUBLIC ws2_32.lib winmm.lib)
   target_link_libraries(w2_lobby PUBLIC ws2_32.lib winmm.lib)
 endif()
 
