@@ -1,8 +1,9 @@
 #include <functional>
-#include <algorithm> // min/max
+#include <algorithm>
 #include "raylib.h"
 #include <enet/enet.h>
 
+#include <iostream>
 #include <vector>
 #include "entity.h"
 #include "protocol.h"
@@ -10,35 +11,63 @@
 
 static std::vector<Entity> entities;
 static uint16_t my_entity = invalid_entity;
-
+static std::vector<std::string> points;
+static std::string name;
+static float radius;
+static uint32_t color;
 void on_new_entity_packet(ENetPacket *packet)
 {
   Entity newEntity;
   deserialize_new_entity(packet, newEntity);
-  // TODO: Direct adressing, of course!
   for (const Entity &e : entities)
     if (e.eid == newEntity.eid)
-      return; // don't need to do anything, we already have entity
+      return;
   entities.push_back(newEntity);
+  enet_packet_destroy(packet);
 }
 
 void on_set_controlled_entity(ENetPacket *packet)
 {
   deserialize_set_controlled_entity(packet, my_entity);
+  enet_packet_destroy(packet);
 }
 
 void on_snapshot(ENetPacket *packet)
 {
   uint16_t eid = invalid_entity;
-  float x = 0.f; float y = 0.f;
-  deserialize_snapshot(packet, eid, x, y);
-  // TODO: Direct adressing, of course!
-  for (Entity &e : entities)
-    if (e.eid == eid)
-    {
-      e.x = x;
-      e.y = y;
-    }
+  float x = 0.f; float y = 0.f; float radius = 0.f;  uint32_t color = 0xff000000;
+  deserialize_snapshot(packet, eid, x, y, radius, color);
+  for (Entity& e : entities)
+  {
+      if (e.eid == eid)
+      {
+          e.x = x;
+          e.y = y;
+          e.radius = radius;
+          e.color = color;
+      }
+  }
+  enet_packet_destroy(packet);
+}
+
+void on_name_received(ENetPacket* packet)
+{
+  deserialize_name(packet, name);
+}
+void on_game_info(ENetPacket* packet)
+{
+  deserialize_player_game_info(packet, radius, color);
+}
+void on_points_start(ENetPacket* packet)
+{
+  points.clear();
+}
+
+void on_points(ENetPacket* packet)
+{
+  std::string pointsLine;
+  deserialize_points_line(packet, pointsLine);
+  points.push_back(pointsLine);
 }
 
 int main(int argc, const char **argv)
@@ -69,7 +98,7 @@ int main(int argc, const char **argv)
 
   int width = 800;
   int height = 600;
-  InitWindow(width, height, "w4 networked MIPT");
+  InitWindow(width, height, "Client");
 
   const int scrWidth = GetMonitorWidth(0);
   const int scrHeight = GetMonitorHeight(0);
@@ -86,7 +115,7 @@ int main(int argc, const char **argv)
   camera.rotation = 0.f;
   camera.zoom = 1.f;
 
-  SetTargetFPS(60);               // Set our game to run at 60 frames-per-second
+  SetTargetFPS(60);             
 
   bool connected = false;
   while (!WindowShouldClose())
@@ -102,7 +131,7 @@ int main(int argc, const char **argv)
         send_join(serverPeer);
         connected = true;
         break;
-      case ENET_EVENT_TYPE_RECEIVE:
+       case ENET_EVENT_TYPE_RECEIVE:
         switch (get_packet_type(event.packet))
         {
         case E_SERVER_TO_CLIENT_NEW_ENTITY:
@@ -116,6 +145,18 @@ int main(int argc, const char **argv)
         case E_SERVER_TO_CLIENT_SNAPSHOT:
           on_snapshot(event.packet);
           break;
+        case E_SERVER_TO_CLIENT_PLAYER_GAME_INFO:
+          on_game_info(event.packet);
+          break;
+        case E_SERVER_TO_CLIENT_NAME:
+          on_name_received(event.packet);
+          break;
+        case E_SERVER_TO_CLIENT_POINTS_START:
+          on_points_start(event.packet);
+          break;
+        case E_SERVER_TO_CLIENT_POINTS:
+          on_points(event.packet);
+          break;
         };
         break;
       default:
@@ -128,29 +169,45 @@ int main(int argc, const char **argv)
       bool right = IsKeyDown(KEY_RIGHT);
       bool up = IsKeyDown(KEY_UP);
       bool down = IsKeyDown(KEY_DOWN);
-      // TODO: Direct adressing, of course!
-      for (Entity &e : entities)
+      for (Entity& e : entities)
+      {
         if (e.eid == my_entity)
         {
           // Update
           e.x += ((left ? -dt : 0.f) + (right ? +dt : 0.f)) * 100.f;
           e.y += ((up ? -dt : 0.f) + (down ? +dt : 0.f)) * 100.f;
-
+          e.radius = radius;
+          e.color = color;
           // Send
           send_entity_state(serverPeer, my_entity, e.x, e.y);
         }
+      }
+       
     }
 
 
     BeginDrawing();
-      ClearBackground(GRAY);
+      ClearBackground(BLACK);
+      DrawText(TextFormat("Your Name: %s", name.c_str()), 20, 20, 20, GREEN);
+      DrawText("List of players and their points:", 20, 40, 20, BLUE);
+      int windowPosY = 40;
+      for (int i = 0; i < points.size(); i++)
+      {
+        windowPosY += 20;
+        if (points[i].find(name) != std::string::npos)
+        {
+          DrawText(points[i].c_str(), 20, windowPosY, 20, WHITE);
+        }
+        else
+        {
+          DrawText(points[i].c_str(), 20, windowPosY, 20, GRAY);
+        }
+      }
       BeginMode2D(camera);
         for (const Entity &e : entities)
         {
-          const Rectangle rect = {e.x, e.y, 10.f, 10.f};
-          DrawRectangleRec(rect, GetColor(e.color));
+            DrawCircle(e.x, e.y, e.radius, GetColor(e.color));
         }
-
       EndMode2D();
     EndDrawing();
   }
