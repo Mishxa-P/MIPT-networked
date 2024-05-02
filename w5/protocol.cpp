@@ -45,7 +45,7 @@ void send_entity_input(ENetPeer *peer, uint16_t eid, float thr, float steer)
   enet_peer_send(peer, 1, packet);
 }
 
-void send_snapshot(ENetPeer *peer, uint16_t eid, float x, float y, float ori)
+void send_snapshot(ENetPeer *peer, uint16_t eid, float x, float y, float ori, uint32_t tick)
 {
   ENetPacket *packet = enet_packet_create(nullptr, sizeof(uint8_t) + sizeof(uint16_t) +
                                                    3 * sizeof(float),
@@ -56,6 +56,7 @@ void send_snapshot(ENetPeer *peer, uint16_t eid, float x, float y, float ori)
   memcpy(ptr, &x, sizeof(float)); ptr += sizeof(float);
   memcpy(ptr, &y, sizeof(float)); ptr += sizeof(float);
   memcpy(ptr, &ori, sizeof(float)); ptr += sizeof(float);
+  memcpy(ptr, &tick, sizeof(uint32_t)); ptr += sizeof(uint32_t);
 
   enet_peer_send(peer, 1, packet);
 }
@@ -85,12 +86,18 @@ void deserialize_entity_input(ENetPacket *packet, uint16_t &eid, float &thr, flo
   steer = *(float*)(ptr); ptr += sizeof(float);
 }
 
-void deserialize_snapshot(ENetPacket *packet, uint16_t &eid, float &x, float &y, float &ori)
+void deserialize_snapshot(ENetPacket *packet, uint16_t &eid, float &x, float &y, float &ori, uint32_t &timeTick)
 {
   uint8_t *ptr = packet->data; ptr += sizeof(uint8_t);
   eid = *(uint16_t*)(ptr); ptr += sizeof(uint16_t);
   x = *(float*)(ptr); ptr += sizeof(float);
   y = *(float*)(ptr); ptr += sizeof(float);
   ori = *(float*)(ptr); ptr += sizeof(float);
+  timeTick = *(uint32_t*)(ptr); ptr += sizeof(uint32_t);
 }
 
+void deserialize_time(ENetPacket *packet, uint32_t &time)
+{
+    uint8_t* ptr = packet->data; ptr += sizeof(uint8_t);
+    time = *(uint32_t*)(ptr); ptr += sizeof(uint32_t); 
+}
