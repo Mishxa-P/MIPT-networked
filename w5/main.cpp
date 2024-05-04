@@ -8,18 +8,19 @@
 #include <vector>
 #include "entity.h"
 #include "protocol.h"
-
+#include <iostream>
 
 static std::vector<Entity> entities;
 static uint16_t my_entity = invalid_entity;
 
 static std::vector<Snapshot> snapshotsHistory;
 
-constexpr uint32_t fixedDt = 20;
-//constexpr uint32_t TIME_OFFSET = 100;
+constexpr uint32_t FIXED_DT = 20;
+constexpr uint32_t TIMEOUT = 100;
 
 static uint32_t startTimeTick = 0;
 static uint32_t currentTimeTick = 0;
+
 
 void on_new_entity_packet(ENetPacket *packet)
 {
@@ -45,15 +46,27 @@ void on_snapshot(ENetPacket *packet)
   float x = 0.f; float y = 0.f; float ori = 0.f; uint32_t timeTick = 0;
   deserialize_snapshot(packet, eid, x, y, ori, timeTick);
   // TODO: Direct adressing, of course!
-  for (Entity &e : entities)
-    if (e.eid == eid)
-    {
-        snapshotsHistory.push_back(Snapshot(x, y, ori, timeTick));
-        if (snapshotsHistory.size() > 3)
-        {
-            snapshotsHistory.erase(snapshotsHistory.begin());
-        }
-    }
+  for (Entity& e : entities)
+  {
+      if (e.eid == eid)
+      {
+          if (e.eid == my_entity)
+          {
+              snapshotsHistory.push_back(Snapshot(x, y, ori, timeTick));
+              if (snapshotsHistory.size() > 3)
+              {
+                  snapshotsHistory.erase(snapshotsHistory.begin());
+              }
+          }
+          else
+          {
+              e.x = x;
+              e.y = y;
+              e.ori = ori;
+          }
+      }
+     
+  }  
   enet_packet_destroy(packet);
 }
 void on_time_sync(ENetEvent& event)
@@ -61,7 +74,7 @@ void on_time_sync(ENetEvent& event)
     uint32_t time;
     deserialize_time(event.packet, time);
     enet_time_set(time + event.peer->roundTripTime / 2);
-    currentTimeTick = time / fixedDt;
+    currentTimeTick = time / FIXED_DT;
     startTimeTick = currentTimeTick;
 }
 float lagrange_interpolation(double currentTime, double t0, double t1, double t2, double v0, double v1, double v2)
@@ -71,7 +84,28 @@ float lagrange_interpolation(double currentTime, double t0, double t1, double t2
     double l2 = (currentTime - t0) * (currentTime - t1) / ((t2 - t0) * (t2 - t1));
     return  v0 * l0 + v1 * l1 + v2 * l2;
 }
-
+void interpolate(Entity &e, uint32_t timeTick)
+{
+    if (snapshotsHistory.size() == 3)
+    {
+        if (snapshotsHistory[0].timeTick == snapshotsHistory[2].timeTick)
+        {
+            return;
+        }
+        e.x = lagrange_interpolation(timeTick, snapshotsHistory[0].timeTick, snapshotsHistory[1].timeTick, snapshotsHistory[2].timeTick,
+            snapshotsHistory[0].x, snapshotsHistory[1].x, snapshotsHistory[2].x);
+        e.y = lagrange_interpolation(timeTick, snapshotsHistory[0].timeTick, snapshotsHistory[1].timeTick, snapshotsHistory[2].timeTick,
+            snapshotsHistory[0].y, snapshotsHistory[1].y, snapshotsHistory[2].y);
+        e.ori = lagrange_interpolation(timeTick, snapshotsHistory[0].timeTick, snapshotsHistory[1].timeTick, snapshotsHistory[2].timeTick,
+            snapshotsHistory[0].ori, snapshotsHistory[1].ori, snapshotsHistory[2].ori);
+    }
+}
+void simulate(Entity& e, float dt, float thr, float steer)
+{
+    e.thr = thr;
+    e.steer = steer;
+    simulate_entity(e, dt);
+}
 int main(int argc, const char **argv)
 {
   if (enet_initialize() != 0)
@@ -157,8 +191,8 @@ int main(int argc, const char **argv)
       };
     }
 
-    uint32_t curTime = enet_time_get();
-
+    uint32_t currentTime = enet_time_get();
+  
     if (my_entity != invalid_entity)
     {
       bool left = IsKeyDown(KEY_LEFT);
@@ -166,28 +200,19 @@ int main(int argc, const char **argv)
       bool up = IsKeyDown(KEY_UP);
       bool down = IsKeyDown(KEY_DOWN);
       // TODO: Direct adressing, of course!
-      for (Entity &e : entities)
-        if (e.eid == my_entity)
-        {
-          // Update
-          float thr = (up ? 1.f : 0.f) + (down ? -1.f : 0.f);
-          float steer = (left ? -1.f : 0.f) + (right ? 1.f : 0.f);
-
-          // Send
-          send_entity_input(serverPeer, my_entity, thr, steer);
-
-          const uint32_t curTimeTick = (curTime / fixedDt) + 1;
-
-          if (snapshotsHistory.size() == 3)
+      for (Entity& e : entities)
+      {
+          if (e.eid == my_entity)
           {
-              e.x = lagrange_interpolation(curTimeTick, snapshotsHistory[0].timeTick, snapshotsHistory[1].timeTick, snapshotsHistory[2].timeTick,
-                  snapshotsHistory[0].x, snapshotsHistory[1].x, snapshotsHistory[2].x);
-              e.y = lagrange_interpolation(curTimeTick, snapshotsHistory[0].timeTick, snapshotsHistory[1].timeTick, snapshotsHistory[2].timeTick,
-                  snapshotsHistory[0].y, snapshotsHistory[1].y, snapshotsHistory[2].y);
-              e.ori = lagrange_interpolation(curTimeTick, snapshotsHistory[0].timeTick, snapshotsHistory[1].timeTick, snapshotsHistory[2].timeTick,
-                  snapshotsHistory[0].ori, snapshotsHistory[1].ori, snapshotsHistory[2].ori);
+              // Update
+              float thr = (up ? 1.f : 0.f) + (down ? -1.f : 0.f);
+              float steer = (left ? -1.f : 0.f) + (right ? 1.f : 0.f);
+ 
+              send_entity_input(serverPeer, my_entity, thr, steer, currentTime / FIXED_DT);
+              simulate(e, dt, thr, steer);
+              interpolate(e, (currentTime - TIMEOUT) / FIXED_DT); 
           }
-        }
+      }   
     }
 
     BeginDrawing();
