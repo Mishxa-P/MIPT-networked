@@ -1,5 +1,6 @@
 #pragma once
 #include "mathUtils.h"
+#include <iostream>
 #include <limits>
 
 template<typename T>
@@ -16,6 +17,23 @@ float unpack_float(T c, float lo, float hi, int num_bits)
   return float(c) / range * (hi - lo) + lo;
 }
 
+struct Float2
+{
+    float x;
+    float y;
+
+    Float2(float a, float b) : x(a), y(b) {}
+};
+
+struct Float3
+{
+    float x;
+    float y;
+    float z;
+
+    Float3(float a, float b, float c) : x(a), y(b), z(c) {}
+};
+
 template<typename T, int num_bits>
 struct PackedFloat
 {
@@ -30,3 +48,53 @@ struct PackedFloat
 
 typedef PackedFloat<uint8_t, 4> float4bitsQuantized;
 
+
+template<typename T, int num_bits_x, int num_bits_y>
+struct PackedFloat2
+{
+    T packedVal;
+
+    PackedFloat2(Float2 v, Float2 lo, Float2 hi) { pack(v, lo, hi); }
+    PackedFloat2(T compressed_val) : packedVal(compressed_val) {}
+
+    void pack(Float2 v, Float2 lo, Float2 hi)
+    {
+        T packedValX = pack_float<T>(v.x, lo.x, hi.x, num_bits_x);
+        T packedValY = pack_float<T>(v.y, lo.y, hi.y, num_bits_y);
+        packedVal = packedValX << num_bits_y | packedValY;
+    }
+    Float2 unpack(Float2 lo, Float2 hi)
+    {
+        float x = unpack_float<T>(packedVal >> num_bits_y, lo.x, hi.x, num_bits_x);
+        float y = unpack_float<T>(packedVal & ((1 << num_bits_y) - 1), lo.y, hi.y, num_bits_y);
+        return Float2(x, y);
+    }
+};
+
+typedef PackedFloat2<uint32_t, 16, 16> float2_16_16bitsQuantized;
+
+template<typename T, int num_bits_x, int num_bits_y, int num_bits_z>
+struct PackedFloat3
+{
+    T packedVal;
+
+    PackedFloat3(Float3 v, Float3 lo, Float3 hi) { pack(v, lo, hi); }
+    PackedFloat3(T compressed_val) : packedVal(compressed_val) {}
+
+    void pack(Float3 v, Float3 lo, Float3 hi)
+    {
+        T packedValX = pack_float<T>(v.x, lo.x, hi.x, num_bits_x);
+        T packedValY = pack_float<T>(v.y, lo.y, hi.y, num_bits_y);
+        T packedValZ = pack_float<T>(v.z, lo.z, hi.z, num_bits_z);
+        packedVal = (packedValX << (num_bits_y + num_bits_z)) | (packedValY << num_bits_z) | packedValZ;
+    }
+    Float3 unpack(Float3 lo, Float3 hi)
+    {
+        float x = unpack_float<T>(packedVal >> (num_bits_y + num_bits_z), lo.x, hi.x, num_bits_x);
+        float y = unpack_float<T>((packedVal >> num_bits_z) & ((1 << num_bits_y) - 1), lo.y, hi.y, num_bits_y);
+        float z = unpack_float<T>(packedVal & ((1 << num_bits_z) - 1), lo.z, hi.z, num_bits_z);
+        return Float3(x, y, z);
+    }
+};
+
+typedef PackedFloat3<uint64_t, 22, 20, 22> float3_22_20_22bitsQuantized;

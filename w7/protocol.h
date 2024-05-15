@@ -3,6 +3,8 @@
 #include <cstdint>
 #include "entity.h"
 
+using message_type_t = uint8_t;
+
 enum MessageType : uint8_t
 {
   E_CLIENT_TO_SERVER_JOIN = 0,

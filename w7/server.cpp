@@ -21,10 +21,7 @@ void on_join(ENetPacket *packet, ENetPeer *peer, ENetHost *host)
   for (const Entity &e : entities)
     maxEid = std::max(maxEid, e.eid);
   uint16_t newEid = maxEid + 1;
-  uint32_t color = 0xff000000 +
-                   0x00440000 * (rand() % 5) +
-                   0x00004400 * (rand() % 5) +
-                   0x00000044 * (rand() % 5);
+  uint32_t color = (255 << 24) + (int((rand() % 120 + 120)) << 16) + (int(rand() % 120 + 120) << 8) + int(rand() % 120 + 120);
   float x = (rand() % 4) * 5.f;
   float y = (rand() % 4) * 5.f;
   Entity ent = {color, x, y, 0.f, (rand() / RAND_MAX) * 3.141592654f, 0.f, 0.f, newEid};
@@ -117,7 +114,7 @@ int main(int argc, const char **argv)
         send_snapshot(peer, e.eid, e.x, e.y, e.ori);
       }
     }
-    Sleep(10000);
+    Sleep(10);
   }
 
   enet_host_destroy(server);
